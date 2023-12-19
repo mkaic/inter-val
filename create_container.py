@@ -16,7 +16,11 @@ container_name = args.container_name
 # set default container name to image name, allow for user to override with -c
 container_name = container_name if container_name is not None else image_name
 
-image = f"docker_images/{image_name}:{tag}" if tag is not None else f"docker_images/{image_name}"
+image = (
+    f"docker_images/{image_name}:{tag}"
+    if tag is not None
+    else f"docker_images/{image_name}"
+)
 
 try:
     subprocess.check_output(["docker", "image", "inspect", image])

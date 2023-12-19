@@ -1,10 +1,9 @@
 import torch
 from torch import nn, Tensor
 from torch.nn import functional as F
-import pytorch_lightning as pl
-from typing import List, Callable, Union, Any, TypeVar, Tuple
+from typing import List, Tuple
 
-# From https://github.com/AntixK/PyTorch-VAE
+# Adapted from https://github.com/AntixK/PyTorch-VAE
 
 
 class VAE(nn.Module):
@@ -92,29 +91,17 @@ class VAE(nn.Module):
             nn.Tanh(),
         )
 
-    def encode(self, input: Tensor) -> List[Tensor]:
-        """
-        Encodes the input by passing through the encoder network
-        and returns the latent codes.
-        :param input: (Tensor) Input tensor to encoder [N x C x H x W]
-        :return: (Tensor) List of latent codes
-        """
-        result = self.encoder(input)
-        result = torch.flatten(result, start_dim=1)
+    def encode(self, x: Tensor) -> List[Tensor]:
+        y_hat = self.encoder(x)
+        y_hat = torch.flatten(y_hat, start_dim=1)
         # Split the result into mu and var components
         # of the latent Gaussian distribution
-        mu = self.fc_mu(result)
-        log_var = self.fc_var(result)
+        mu = self.fc_mu(y_hat)
+        log_var = self.fc_var(y_hat)
 
         return mu, log_var
 
     def decode(self, z: Tensor) -> Tensor:
-        """
-        Maps the given latent codes
-        onto the image space.
-        :param z: (Tensor) [B x D]
-        :return: (Tensor) [B x C x H x W]
-        """
         z = self.decoder_input(z)
         z = z.view(
             -1, self.bottleneck_channels, self.bottleneck_size, self.bottleneck_size
@@ -124,60 +111,26 @@ class VAE(nn.Module):
         return z
 
     def reparameterize(self, mu: Tensor, logvar: Tensor) -> Tensor:
-        """
-        Reparameterization trick to sample from N(mu, var) from
-        N(0,1).
-        :param mu: (Tensor) Mean of the latent Gaussian [B x D]
-        :param logvar: (Tensor) Standard deviation of the latent Gaussian [B x D]
-        :return: (Tensor) [B x D]
-        """
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
         return eps * std + mu
 
-    def forward(self, x: Tensor) -> List[Tensor]:
+    def forward(self, x: Tensor) -> Tuple[Tensor]:
         mu, log_var = self.encode(x)
         z = self.reparameterize(mu, log_var)
         return self.decode(z), mu, log_var
 
     def loss_function(self, y_hat, x, mu, log_var) -> Tensor:
-        """
-        Computes the VAE loss function.
-        KL(N(\mu, \sigma), N(0, 1)) = \log \frac{1}{\sigma} + \frac{\sigma^2 + \mu^2}{2} - \frac{1}{2}
-        :return:
-        """
+        kullbeck_leibler_divergence_weight = 0.00025
+        reconstruction_loss = F.mse_loss(y_hat, x)
 
-        kld_weight = 0.00025  # Account for the minibatch samples from the dataset
-        recons_loss = F.mse_loss(y_hat, x)
-
-        kld_loss = torch.mean(
+        kullbeck_leibler_divergence_loss = torch.mean(
             -0.5 * torch.sum(1 + log_var - mu**2 - log_var.exp(), dim=1), dim=0
         )
 
-        loss = recons_loss + kld_weight * kld_loss
+        loss = (
+            reconstruction_loss
+            + kullbeck_leibler_divergence_weight * kullbeck_leibler_divergence_loss
+        )
 
         return loss
-
-    def sample(self, num_samples: int, current_device: int) -> Tensor:
-        """
-        Samples from the latent space and return the corresponding
-        image space map.
-        :param num_samples: (Int) Number of samples
-        :param current_device: (Int) Device to run the model
-        :return: (Tensor)
-        """
-        z = torch.randn(num_samples, self.latent_dim)
-
-        z = z.to(current_device)
-
-        samples = self.decode(z)
-        return samples
-
-    def generate(self, x: Tensor) -> Tensor:
-        """
-        Given an input image x, returns the reconstructed image
-        :param x: (Tensor) [B x C x H x W]
-        :return: (Tensor) [B x C x H x W]
-        """
-
-        return self.forward(x)[0]
