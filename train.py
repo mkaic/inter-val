@@ -41,8 +41,8 @@ model = VAE(
 
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-validation_loss = 100.0
-train_loss = 100.0
+validation_loss = 0.0
+train_loss = 0.0
 
 for epoch in range(EPOCHS):
     train_dl = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
@@ -50,8 +50,9 @@ for epoch in range(EPOCHS):
 
     progress_bar = tqdm(train_dl, leave=False)
     for step, x in enumerate(progress_bar):
-
-        progress_bar.set_description_str(f"Epoch {epoch} | Train Loss: {train_loss:.5f} | Val Loss: {validation_loss:.5f}")
+        progress_bar.set_description_str(
+            f"Epoch {epoch} | Train Loss: {train_loss:.5f} | Val Loss: {validation_loss:.5f}"
+        )
 
         x = x.to(DEVICE)
 
@@ -72,7 +73,7 @@ for epoch in range(EPOCHS):
                 sync_dist=True,
             )
 
-        train_loss = loss.item()
+        train_loss = train_loss * 0.99 + loss.item() * 0.01 if step > 0 else loss.item()
 
         optimizer.zero_grad()
         loss.backward()
